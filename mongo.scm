@@ -1,3 +1,4 @@
+;;; -*- coding: utf-8; mode: scheme -*-
 ;;;
 ;;; mongo
 ;;;
@@ -11,9 +12,10 @@
   (use srfi-27)
   (use mongo.bson)
   (export
-   <mongo-connection>
+   <mongo>
    <mongo-error>
    req->resp
+   req-only
    make-requestID
    get-responseTo
    write-buffer
@@ -21,7 +23,7 @@
    query
    update
    insert
-   remove
+   delete
    update-first
    upsert
    get-count))
@@ -32,7 +34,7 @@
   mongo-error?
   (reason mongo-error-reason))
 
-(define-class <mongo-connection> ()
+(define-class <mongo> ()
   ((host :allocation :instance
          :init-keyword :host
          :init-value "localhost")
@@ -43,7 +45,7 @@
    (out :allocation :instance)
    (sock :allocation :instance)))
 
-(define-method initialize ((mongo <mongo-connection>) initargs)
+(define-method initialize ((mongo <mongo>) initargs)
   (next-method)
   (guard (exc
 	  ((condition-has-type? exc <system-error>)
@@ -83,7 +85,7 @@
 (define-constant ShardConfigStale 2)
 (define-constant AwaitCapable 3)
 
-(define-method req->resp ((mongo <mongo-connection>) buff)
+(define-method req->resp ((mongo <mongo>) buff)
   (write-block buff (~ mongo 'out))
   (flush (~ mongo 'out))
   (let* ((len (read-s32 (~ mongo 'in) 'littie-endian))
@@ -91,6 +93,11 @@
     (u8vector-copy! recv (uvector-alias <u8vector> (s32vector len)) 0)
     (read-block! recv (~ mongo 'in) 4 -1)
     recv))
+
+(define-method req-only ((mongo <mongo>) buff)
+  (write-block buff (~ mongo 'out))
+  (flush (~ mongo 'out))
+  (undefined))
 
 (define (with-connection mongo proc)
   (let1 sock (~ mongo 'sock)
@@ -155,7 +162,7 @@
 		(error <mongo-error> "returned document number unmatched.")))
           (error <mongo-error> "Not OP_REPLY or response length unmatched.")))))
 
-(define-method query ((mongo <mongo-connection>) colname num-to-skip num-to-return query . opts)
+(define-method query ((mongo <mongo>) colname num-to-skip num-to-return query . opts)
   (let-keywords opts ((TailableCursor :TailableCursor #f)
 		      (SlaveOk :SlaveOk #f)
 		      (NoCursorTimeout :NoCursorTimeout #f)
@@ -182,7 +189,7 @@
 		      (read-buffer recv)
 		      (error <mongo-error> "requestID and responseTo unmatched.")))))
 
-(define-method insert ((mongo <mongo-connection>) colname docs)
+(define-method insert ((mongo <mongo>) colname docs)
   (let* ((requestID (make-requestID))
 	 (buff (write-buffer
 		(append
@@ -190,11 +197,19 @@
 		  (msg-header requestID 2 OP_INSERT)
 		  (s32vector 0)
 		  (string->bson-cstr colname))
-		 (map (^a (list->bson a)) docs))))
-	 (recv (req->resp mongo buff)))
-    (if (= requestID (get-responseTo recv))
-	(read-buffer recv)
-	(error <mongo-error> "requestID and responseTo unmatched."))))
+		 (map (^a (list->bson a)) docs)))))
+    (req-only mongo buff)))
+
+(define-method delete ((mongo <mongo>) colname doc)
+  (let* ((requestID (make-requestID))
+	 (buff (write-buffer
+		(list
+		 (msg-header requestID 2 OP_DELETE)
+		 (s32vector 0)
+		 (string->bson-cstr colname)
+		 (s32vector 0)
+		 (list->bson doc)))))
+    (req-only mongo buff)))
 
 ;; Epilogue
 (provide "mongo")

@@ -141,7 +141,7 @@
 
 (test* "read-element objectid" #t
        (let ((vec (u8vector 7 101 120 97 109 112 108 101 0 255 255 255 255 255 255 255 255 255 255 255 255 8 97 0 0))
-	     (val '("example" . #u8(255 255 255 255 255 255 255 255 255 255 255 255))))
+	     (val '("example" . "ffffffffffffffffffffffff")))
 	 (receive (element rest) (read-element vec)
 	   (and 
 	    (equal? (cons (~ element 'name) (~ element 'value)) val)
@@ -173,7 +173,7 @@
 
 (test* "read-element null" #t
        (let ((vec (u8vector 10 101 120 97 109 112 108 101 0 8 97 0 0))
-	     (val '("example" . -nan.0)))
+	     (val '("example" . ())))
 	 (receive (element rest) (read-element vec)
 	   (and 
 	    (equal? (cons (~ element 'name) (~ element 'value)) val)
@@ -508,6 +508,20 @@
 (test* "get-responseTo" #t
        (let1 resp (u8vector 90 1 0 0 24 54 129 129 153 241 65 75 1 0 0 0 8 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0 0 0 54 1 0 0 4 100 97 116 97 98 97 115 101 115 0 7 1 0 0 3 48 0 48 0 0 0 2 110 97 109 101 0 5 0 0 0 116 101 115 116 0 1 115 105 122 101 79 110 68 105 115 107 0 0 0 0 0 0 0 170 65 8 101 109 112 116 121 0 0 0 3 49 0 51 0 0 0 2 110 97 109 101 0 8 0 0 0 101 120 97 109 112 108 101 0 1 115 105 122 101 79 110 68 105 115 107 0 0 0 0 0 0 0 170 65 8 101 109 112 116 121 0 0 0 3 50 0 49 0 0 0 2 110 97 109 101 0 6 0 0 0 97 100 109 105 110 0 1 115 105 122 101 79 110 68 105 115 107 0 0 0 0 0 0 0 240 63 8 101 109 112 116 121 0 1 0 3 51 0 46 0 0 0 2 110 97 109 101 0 3 0 0 0 100 98 0 1 115 105 122 101 79 110 68 105 115 107 0 0 0 0 0 0 0 240 63 8 101 109 112 116 121 0 1 0 3 52 0 49 0 0 0 2 110 97 109 101 0 6 0 0 0 108 111 99 97 108 0 1 115 105 122 101 79 110 68 105 115 107 0 0 0 0 0 0 0 240 63 8 101 109 112 116 121 0 1 0 0 1 116 111 116 97 108 83 105 122 101 0 0 0 0 0 0 0 186 65 1 111 107 0 0 0 0 0 0 0 240 63 0)
 	 (= 1262612889 (get-responseTo resp))))
+
+;; (query (make <mongo>) "admin.$cmd" 0 1 '(("getlasterror" . 1)))
+;; (query (make <mongo>) "admin.$cmd" 0 1 '(("listCommands" . 1)))
+;; (query (make <mongo>) "admin.$cmd" 0 1 '(("listDatabases" . 1)))
+;; (query (make <mongo>) "admin.$cmd" 0 1 '(("top" . 1)))
+
+#;(test* "query" #t
+       (query (make <mongo>) "books.books" 0 0 '()))
+
+#;(test* "insert" (undefined)
+       (insert (make <mongo>) "books.books" `(,doc12)))
+
+#;(test* "delete" (undefined)
+       (delete (make <mongo>) "books.books" '(("published" . "2012"))))
 
 ;; epilogue
 (test-end)
