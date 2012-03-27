@@ -509,19 +509,69 @@
        (let1 resp (u8vector 90 1 0 0 24 54 129 129 153 241 65 75 1 0 0 0 8 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0 0 0 54 1 0 0 4 100 97 116 97 98 97 115 101 115 0 7 1 0 0 3 48 0 48 0 0 0 2 110 97 109 101 0 5 0 0 0 116 101 115 116 0 1 115 105 122 101 79 110 68 105 115 107 0 0 0 0 0 0 0 170 65 8 101 109 112 116 121 0 0 0 3 49 0 51 0 0 0 2 110 97 109 101 0 8 0 0 0 101 120 97 109 112 108 101 0 1 115 105 122 101 79 110 68 105 115 107 0 0 0 0 0 0 0 170 65 8 101 109 112 116 121 0 0 0 3 50 0 49 0 0 0 2 110 97 109 101 0 6 0 0 0 97 100 109 105 110 0 1 115 105 122 101 79 110 68 105 115 107 0 0 0 0 0 0 0 240 63 8 101 109 112 116 121 0 1 0 3 51 0 46 0 0 0 2 110 97 109 101 0 3 0 0 0 100 98 0 1 115 105 122 101 79 110 68 105 115 107 0 0 0 0 0 0 0 240 63 8 101 109 112 116 121 0 1 0 3 52 0 49 0 0 0 2 110 97 109 101 0 6 0 0 0 108 111 99 97 108 0 1 115 105 122 101 79 110 68 105 115 107 0 0 0 0 0 0 0 240 63 8 101 109 112 116 121 0 1 0 0 1 116 111 116 97 108 83 105 122 101 0 0 0 0 0 0 0 186 65 1 111 107 0 0 0 0 0 0 0 240 63 0)
 	 (= 1262612889 (get-responseTo resp))))
 
-;; (query (make <mongo>) "admin.$cmd" 0 1 '(("getlasterror" . 1)))
-;; (query (make <mongo>) "admin.$cmd" 0 1 '(("listCommands" . 1)))
-;; (query (make <mongo>) "admin.$cmd" 0 1 '(("listDatabases" . 1)))
-;; (query (make <mongo>) "admin.$cmd" 0 1 '(("top" . 1)))
+(define mongo #f)
 
-#;(test* "query" #t
-       (query (make <mongo>) "books.books" 0 0 '()))
+(test* "<mongo>" #t
+       (guard (exc 
+	       ((condition-has-type? exc <mongo-error>)
+		(print "Can't connect mongodb."))
+	       (else
+		(print "Something happened.")))
+	      (let1 m (make <mongo>)
+		(set! mongo m)
+		(is-a? mongo <mongo>))))
 
-#;(test* "insert" (undefined)
-       (insert (make <mongo>) "books.books" `(,doc12)))
+(if (is-a? mongo <mongo>)
+    (begin
+      (test* "insert" (undefined)
+	     (for-each (^a (insert mongo "test.books" (list a)))
+		       `(,doc0 ,doc1 ,doc2 ,doc3 ,doc4 ,doc5 ,doc6 ,doc7 ,doc8 ,doc9 ,doc10 ,doc11 ,doc12)))
+      
+      (test* "query" #t
+	     (let1 titles '("Setting Free the Bears" "The Water-Method Man" "The World According to Garp" "The Hotel New Hampshire" "The 158-Pound Marriage" "The Cider House Rules" "A Prayer for Owen Meany" "A Son of the Circus" "A Widow for One Year" "The Fourth Hand" "Until I Find You" "Last Night in Twisted River" "In One Person")
+	       (equal?
+		(sort titles)
+		(sort (map (^a (cdr (assoc "en" (cdr (assoc "title" a)))))
+			   ((query mongo "test.books" 0 0 '())))))))
 
-#;(test* "delete" (undefined)
-       (delete (make <mongo>) "books.books" '(("published" . "2012"))))
+
+      (test* "update" (undefined)
+	     (update mongo "test.books" 
+		     '(("title" . (("ja" . "ウォーターメソッドマン") ("en" . "The Water-Method Man")))) 
+		     '(("title" . (("ja" . "水療法の男") ("en" . "The Water-Method Man")))
+		       ("auther" . "John Winslow Irving") 
+		       ("pubulished" . "1972") 
+		       ("translated" . #t)
+		       ("translator" . #("柴田元幸" "岸本佐知子"))
+		       ("number_of_bear" 1 bson:int32))))
+
+      (test* "update confirm" #t
+	     (equal? "水療法の男"
+		     (cdr (assoc "ja" 
+				 (cdr (assoc "title" (car 
+						      ((query mongo "test.books" 0 1 
+							      '(("title" . (("ja" . "水療法の男") ("en" . "The Water-Method Man")))))))))))))
+      (test* "getmore" #t
+	     (let1 mongo-reply (query mongo "test.books" 0 6 '())
+	       (and
+		(= (length (mongo-reply)) 6)
+		(let1 get-more-reply (getmore mongo "test.books" 10 (~ mongo-reply 'cursorID))
+		  (= (length (get-more-reply)) 7)))))
+
+      (test* "kill-cusors" #t
+	     (let1 mongo-reply (query mongo "test.books" 0 5 '())
+	       (let1 cursorID (~ mongo-reply 'cursorID)
+		 (and
+		  (= (length ((getmore mongo "test.books" 2 cursorID))) 2)
+		  (begin
+		    (kill-cusors mongo `(,cursorID))
+		    (= (length ((getmore mongo "test.books" 2 cursorID))) 0))))))
+    
+      (test* "delete" (undefined)
+	     (delete (make <mongo>) "test.books" '()))
+
+      (test* "delete confirm" #t
+	     (if (null? ((query mongo "test.books" 0 0 '()))) #t))))
 
 ;; epilogue
 (test-end)
