@@ -124,6 +124,21 @@
        #\1) #t
        #f))
 
+(define (check-element-name name)
+  (not (or
+	(regmatch? (#/^\$.*/ name))
+	(number? (string-scan name "."))
+	(equal? name "_id"))))
+
+(define (check-element-names ls)
+  (for-each (^a (begin 
+		  (unless (check-element-name (car a))
+		    (error <mongo-error> #`"element name, ',(car a)' unforbiddened."))
+		  (if (list? (cdr a))
+		      (check-element-names (cdr a))))) ls))
+
+(check-element-names '(("hoge" . (("gere" . 1) ("dore" . 2))) ("zure" . 3)))
+
 (define (write-buffer list)
   (let* ((ls (map (^a (if (u8vector? a) a (uvector-alias <u8vector> a))) list))
 	 (size (fold (^ (a b) (+ (uvector-length a) b)) 0 ls))
