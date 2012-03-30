@@ -530,20 +530,20 @@
 
 (if (is-a? mongo <mongo>)
     (begin
-      (test* "insert" (undefined)
-	     (for-each (^a (insert mongo "test.books" (list a)))
+      (test* "_insert" (undefined)
+	     (for-each (^a (_insert mongo "test.books" (list a)))
 		       `(,doc0 ,doc1 ,doc2 ,doc3 ,doc4 ,doc5 ,doc6 ,doc7 ,doc8 ,doc9 ,doc10 ,doc11 ,doc12)))
       
-      (test* "query" #t
+      (test* "_query" #t
 	     (let1 titles '("Setting Free the Bears" "The Water-Method Man" "The World According to Garp" "The Hotel New Hampshire" "The 158-Pound Marriage" "The Cider House Rules" "A Prayer for Owen Meany" "A Son of the Circus" "A Widow for One Year" "The Fourth Hand" "Until I Find You" "Last Night in Twisted River" "In One Person")
 	       (equal?
 		(sort titles)
 		(sort (map (^a (cdr (assoc "en" (cdr (assoc "title" a)))))
-			   ((query mongo "test.books" 0 0 '())))))))
+			   ((_query mongo "test.books" 0 0 '() '())))))))
 
 
-      (test* "update" (undefined)
-	     (update mongo "test.books" 
+      (test* "_update" (undefined)
+	     (_update mongo "test.books" 
 		     '(("title" . (("ja" . "ウォーターメソッドマン") ("en" . "The Water-Method Man")))) 
 		     '(("title" . (("ja" . "水療法の男") ("en" . "The Water-Method Man")))
 		       ("auther" . "John Winslow Irving") 
@@ -552,33 +552,34 @@
 		       ("translator" . #("柴田元幸" "岸本佐知子"))
 		       ("number_of_bear" 1 bson:int32))))
 
-      (test* "update confirm" #t
+      (test* "_update confirm" #t
 	     (equal? "水療法の男"
 		     (cdr (assoc "ja" 
 				 (cdr (assoc "title" (car 
-						      ((query mongo "test.books" 0 1 
-							      '(("title" . (("ja" . "水療法の男") ("en" . "The Water-Method Man")))))))))))))
-      (test* "getmore" #t
-	     (let1 mongo-reply (query mongo "test.books" 0 6 '())
+						      ((_query mongo "test.books" 0 1 
+							      '(("title" . (("ja" . "水療法の男") ("en" . "The Water-Method Man")))) 
+							      '())))))))))
+      (test* "_getmore" #t
+	     (let1 mongo-reply (_query mongo "test.books" 0 6 '() '())
 	       (and
 		(= (length (mongo-reply)) 6)
-		(let1 get-more-reply (getmore mongo "test.books" 10 (~ mongo-reply 'cursorID))
+		(let1 get-more-reply (_getmore mongo "test.books" 10 (~ mongo-reply 'cursorID))
 		  (= (length (get-more-reply)) 7)))))
 
-      (test* "kill-cusors" #t
-	     (let1 mongo-reply (query mongo "test.books" 0 5 '())
+      (test* "_kill-cusors" #t
+	     (let1 mongo-reply (_query mongo "test.books" 0 5 '() '())
 	       (let1 cursorID (~ mongo-reply 'cursorID)
 		 (and
-		  (= (length ((getmore mongo "test.books" 2 cursorID))) 2)
+		  (= (length ((_getmore mongo "test.books" 2 cursorID))) 2)
 		  (begin
-		    (kill-cusors mongo `(,cursorID))
-		    (= (length ((getmore mongo "test.books" 2 cursorID))) 0))))))
+		    (_kill-cusors mongo `(,cursorID))
+		    (= (length ((_getmore mongo "test.books" 2 cursorID))) 0))))))
     
-      (test* "delete" (undefined)
-	     (delete (make <mongo>) "test.books" '()))
+      (test* "_delete" (undefined)
+	     (_delete (make <mongo>) "test.books" '()))
 
-      (test* "delete confirm" #t
-	     (if (null? ((query mongo "test.books" 0 0 '()))) #t))))
+      (test* "_delete confirm" #t
+	     (if (null? ((_query mongo "test.books" 0 0 '() '()))) #t))))
 
 ;; epilogue
 (test-end)

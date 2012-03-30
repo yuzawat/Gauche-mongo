@@ -19,14 +19,16 @@
    req-only
    make-requestID
    get-responseTo
+   check-element-name
+   check-element-names
    write-buffer
    read-buffer
-   update
-   query
-   insert
-   getmore
-   delete
-   kill-cusors))
+   _update
+   _query
+   _insert
+   _getmore
+   _delete
+   _kill-cusors))
 
 (select-module mongo)
 
@@ -131,13 +133,12 @@
 	(equal? name "_id"))))
 
 (define (check-element-names ls)
-  (for-each (^a (begin 
-		  (unless (check-element-name (car a))
-		    (error <mongo-error> #`"element name, ',(car a)' unforbiddened."))
-		  (if (list? (cdr a))
-		      (check-element-names (cdr a))))) ls))
-
-(check-element-names '(("hoge" . (("gere" . 1) ("dore" . 2))) ("zure" . 3)))
+  (unless (null? ls)
+    (for-each (^a (begin 
+		    (unless (check-element-name (car a))
+		      (error <mongo-error> #`"element name, ',(car a)' unforbiddened."))
+		    (if (list? (cdr a))
+			(check-element-names (cdr a))))) ls)))
 
 (define (write-buffer list)
   (let* ((ls (map (^a (if (u8vector? a) a (uvector-alias <u8vector> a))) list))
@@ -196,10 +197,12 @@
           (error <mongo-error> "Not OP_REPLY or response length unmatched.")))))
 
 
-(define-method update ((mongo <mongo>) colname selector update . opts)
+;; Basic Ops
+(define-method _update ((mongo <mongo>) colname selector update . opts)
   (let-keywords opts ((Upsert :Upsert #f)
 		      (MultiUpdate :MultiUpdate #f)
 		      . opt)
+		#;(check-element-names update)
 		(let* ((requestID (make-requestID))
 		       (buff (write-buffer
 			      (list
@@ -212,7 +215,7 @@
 			       (list->bson update)))))
 		  (req-only mongo buff))))
 
-(define-method query ((mongo <mongo>) colname num-to-skip num-to-return query . opts)
+(define-method _query ((mongo <mongo>) colname num-to-skip num-to-return query return-field-selector . opts)
   (let-keywords opts ((TailableCursor :TailableCursor #f)
 		      (SlaveOk :SlaveOk #f)
 		      (NoCursorTimeout :NoCursorTimeout #f)
@@ -222,26 +225,31 @@
                       . opt)
 		(let* ((requestID (make-requestID))
 		       (buff (write-buffer
-			      (list
-			       (msg-header requestID -1 OP_QUERY)
-			       (s32vector (+ (if TailableCursor 2 0)
-					     (if SlaveOk 4 0)
-					     (if NoCursorTimeout 16 0)
-					     (if AwaitData 32 0)
-					     (if Exhaust 64 0)
-					     (if Partial 128 0)))
-			       (string->bson-cstr colname)
-			       (s32vector num-to-skip)
-			       (s32vector num-to-return)
-			       (list->bson query))))
+			      (append
+			       (list
+				(msg-header requestID -1 OP_QUERY)
+				(s32vector (+ (if TailableCursor 2 0)
+					      (if SlaveOk 4 0)
+					      (if NoCursorTimeout 16 0)
+					      (if AwaitData 32 0)
+					      (if Exhaust 64 0)
+					      (if Partial 128 0)))
+				(string->bson-cstr colname)
+				(s32vector num-to-skip)
+				(s32vector num-to-return)
+				(list->bson query))
+			       (if (not (null? return-field-selector))
+				   (list (list->bson return-field-selector))
+				   '()))))
 		       (recv (req->resp mongo buff)))
 		  (if (= requestID (get-responseTo recv))
 		      (read-buffer recv)
 		      (error <mongo-error> "requestID and responseTo unmatched.")))))
 
-(define-method insert ((mongo <mongo>) colname docs . opts)
+(define-method _insert ((mongo <mongo>) colname docs . opts)
   (let-keywords opts ((ContinueOnError :ContinueOnError #f)
 		      . opt)
+		#;(for-each (^a (check-element-names a)) docs)
 		(let* ((requestID (make-requestID))
 		       (buff (write-buffer
 			      (append
@@ -252,7 +260,7 @@
 			       (map (^a (list->bson a)) docs)))))
 		  (req-only mongo buff))))
 
-(define-method getmore ((mongo <mongo>) colname num-to-return cursor-id)
+(define-method _getmore ((mongo <mongo>) colname num-to-return cursor-id)
   (let* ((requestID (make-requestID))
 	 (buff (write-buffer
 		(list
@@ -266,7 +274,7 @@
 	(read-buffer recv)
 	(error <mongo-error> "requestID and responseTo unmatched."))))
 
-(define-method delete ((mongo <mongo>) colname doc . opts)
+(define-method _delete ((mongo <mongo>) colname doc . opts)
   (let-keywords opts ((SingleRemove :SingleRemove #f)
 		      . opt)
 		(let* ((requestID (make-requestID))
@@ -279,7 +287,7 @@
 			       (list->bson doc)))))
 		  (req-only mongo buff))))
 
-(define-method kill-cusors ((mongo <mongo>) cursorIDs)
+(define-method _kill-cusors ((mongo <mongo>) cursorIDs)
   (let* ((requestID (make-requestID))
 	 (buff (write-buffer
 		(append
@@ -289,6 +297,68 @@
 		  (s32vector (length cursorIDs)))
 		 (map (^a (s64vector a)) cursorIDs)))))
     (req-only mongo buff)))
+
+
+;; Collection Basic Ops
+(define-method find ((mongo <mongo>))
+  (undefined))
+
+(define-method insert ((mongo <mongo>))
+  (undefined))
+
+(define-method remove ((mongo <mongo>))
+  (undefined))
+
+(define-method update ((mongo <mongo>))
+  (undefined))
+
+(define-method update-1st ((mongo <mongo>))
+  (undefined))
+
+(define-method upsert ((mongo <mongo>))
+  (undefined))
+
+(define-method get-count ((mongo <mongo>))
+  (undefined))
+
+;; Collection Index Ops
+(define-method create-index ((mongo <mongo>))
+  (undefined))
+
+(define-method drop-index ((mongo <mongo>))
+  (undefined))
+
+(define-method drop-indexes ((mongo <mongo>))
+  (undefined))
+
+(define-method get-index-information ((mongo <mongo>))
+  (undefined))
+
+;; Collection Misc Ops
+(define-method explain ((mongo <mongo>))
+  (undefined))
+
+(define-method get-options ((mongo <mongo>))
+  (undefined))
+
+(define-method get-name ((mongo <mongo>))
+  (undefined))
+
+(define-method close ((mongo <mongo>))
+  (undefined))
+
+;; Collection Cursor Ops
+(define-method get-next-document ((mongo <mongo>))
+  (undefined))
+
+(define-method get-iterator ((mongo <mongo>))
+  (undefined))
+
+(define-method has-more ((mongo <mongo>))
+  (undefined))
+
+(define-method close ((mongo <mongo>))
+  (undefined))
 
 ;; Epilogue
 (provide "mongo")
