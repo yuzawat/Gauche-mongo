@@ -298,6 +298,25 @@
 		 (map (^a (s64vector a)) cursorIDs)))))
     (req-only mongo buff)))
 
+;; GridFS
+(define (file->u8vector-vector filename size)
+  (let1 fsize (sys-stat->size (sys-stat filename))
+    (call-with-input-file filename
+      (^i (let loop ((ls '()))
+	    (let* ((cur (port-tell i))
+		   (buff (make-u8vector 
+			  (if (>= (- fsize cur) size) size 
+			      (- fsize cur)))))
+	      (if (= fsize cur) (list->vector ls)
+		  (begin
+		    (read-block! buff i)
+		    (loop (append ls (list buff)))))))))))
+
+(define (u8vector-vector->file filename vector)
+  (call-with-output-file filename
+    (^o (for-each (^a (write-block a o)) (vector->list vector))
+	(flush o))))
+
 
 ;; Collection Basic Ops
 (define-method find ((mongo <mongo>))

@@ -25,10 +25,13 @@
 (define-module mongo.bson
   (use binary.io)
   (use gauche.array)
+  (use gauche.parameter)
   (use gauche.sequence)
   (use gauche.uvector)
+  (use rfc.md5)
   (use srfi-1)
   (use srfi-11)
+  (use srfi-27)
   (use util.match)
   (export
    bson->list
@@ -55,6 +58,7 @@
    get-binary
    get-regexp-str
    get-code_w_s
+   object-id
    ))
 
 (select-module mongo.bson)
@@ -328,6 +332,8 @@
        (make-element etype ename-vec eval))
       ([6]
        (make-element etype ename-vec eval))
+      ([7]
+       (make-element etype ename-vec eval))
       ([8]
        (make-element etype ename-vec (make-u8vector 1 (if (boolean eval) 0 1))))
       ([9]
@@ -500,5 +506,32 @@
      (bson-str->string (u8vector-copy str Length-head))
      (bson->list (u8vector-copy str (+ Length-head Length-head code-len))))))
 
+(define object-id-seq 
+  (begin 
+    (random-source-randomize! default-random-source)
+    (make-parameter
+     ((random-source-make-integers default-random-source) 16777216))))
+
+(define (object-id-seq-inc!)
+  (if (< (object-id-seq) 16777215)
+      (object-id-seq (+ (object-id-seq) 1))
+      (object-id-seq 0)))
+
+(define (object-id)
+  (let ((buff (make-u8vector 12))
+	(seq (object-id-seq)))
+    (put-u32be! buff 0 (sys-time))
+    (uvector-copy! buff 4 
+		   (u8vector-copy 
+		    (string->u8vector 
+		     (md5-digest-string (sys-gethostname)))
+		    0 3))
+    (put-u16be! buff 7 (sys-getpid))
+    (put-u8! buff 9 (bit-field seq 16 24)) 
+    (put-u8! buff 10 (bit-field seq 8 16)) 
+    (put-u8! buff 11 (bit-field seq 0 8))
+    (object-id-seq-inc!)
+    buff))
+
 ;; Epilogue
-(provide "mongo.bson")
+(provide "mongo/bson")
