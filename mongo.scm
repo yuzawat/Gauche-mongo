@@ -1,8 +1,13 @@
 ;;; -*- coding: utf-8; mode: scheme -*-
 ;;;
 ;;; mongoDB driver for Gauche
-;;;
 ;;;  mongoDB <http://www.mongodb.org/>
+
+;;; Last Updated: "2012/04/03 22:05.43"
+;;;
+;;;  Copyright (c) 2012  yuzawat <suzdalenator@gmail.com>
+;;;
+
 
 (define-module mongo
   (use gauche.uvector)
@@ -74,7 +79,7 @@
 
 (define-method initialize ((mongo <mongo>) initargs)
   (next-method)
-  (cond (((string->regexp "^mongodb://(?:(.+):(.+)@)?([^,\/:]+)(?:\:(\\d+))?(?:,([^\/]+))*(?:/?(.+)*)$") 
+  (cond (((string->regexp "^mongodb://(?:(.+):(.+)@)?([^,/:]+)(?:\:(\\d+))?(?:,([^/]+))*(?:/?(.+)*)$") 
 	  (~ mongo 'uri))
 	 => (^r (begin
 		  (set! (~ mongo 'username) (r 1))
@@ -83,7 +88,7 @@
 			(append
 			 (list (make <mongo-connection> 
 				 :host (r 3)
-				 :port (r 4)))
+				 :port (string->number (r 4))))
 			 (if (r 5)
 			     (map (^a (let1 srv (string-split a ":")
 					(make <mongo-connection> 
@@ -92,7 +97,8 @@
 						    (string->number (cadr srv))))))
 				  (string-split (r 5) ","))
 			     '())))
-		  (set! (~ mongo 'dbname) (r 6)))))))
+		  (set! (~ mongo 'dbname) (r 6)))))
+	(else (error <mongo-error> "Invalid mongodb uri."))))
 
 (define-class <mongo-reply> ()
   ((requestID :allocation :instance :init-keyword :requestID)

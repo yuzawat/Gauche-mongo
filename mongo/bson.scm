@@ -1,7 +1,13 @@
 ;;; -*- coding: utf-8; mode: scheme -*-
 ;;
 ;; BSON parser & constructer
+;;  * BSON spec: <http://bsonspec.org/#/specification>
+
+;; Last Updated: "2012/04/03 21:49.09"
 ;;
+;;  Copyright (c) 2012  yuzawat <suzdalenator@gmail.com>
+;;
+
 ;; (bson->list bson-document) => list
 ;;   bson-document as u8vector
 ;;   list as '(("key0" . val0) ("key1" . val1) ("key2" . val2))
@@ -20,7 +26,7 @@
 ;; (<bson-element>) => bson-element 
 ;;    bson-element as u8vector
 ;;
-;;  * BSON spec: <http://bsonspec.org/#/specification>
+
 
 (define-module mongo.bson
   (use binary.io)
