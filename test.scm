@@ -516,22 +516,22 @@
 	(not (check-element-name "$test"))
 	(not (check-element-name "_id"))))
 
-(define mongo #f)
+(define mc #f)
 
-(test* "<mongo>" #t
+(test* "<mongo-connection>" #t
        (guard (exc 
 	       ((condition-has-type? exc <mongo-error>)
 		(print "Can't connect mongodb."))
 	       (else
 		(print "Something happened.")))
-	      (let1 m (make <mongo>)
-		(set! mongo m)
-		(is-a? mongo <mongo>))))
+	      (let1 m (make <mongo-connection>)
+		(set! mc m)
+		(is-a? mc <mongo-connection>))))
 
-(if (is-a? mongo <mongo>)
+(if (is-a? mc <mongo-connection>)
     (begin
       (test* "_insert" (undefined)
-	     (for-each (^a (_insert mongo "test.books" (list a)))
+	     (for-each (^a (_insert mc "test.books" (list a)))
 		       `(,doc0 ,doc1 ,doc2 ,doc3 ,doc4 ,doc5 ,doc6 ,doc7 ,doc8 ,doc9 ,doc10 ,doc11 ,doc12)))
       
       (test* "_query" #t
@@ -539,11 +539,11 @@
 	       (equal?
 		(sort titles)
 		(sort (map (^a (cdr (assoc "en" (cdr (assoc "title" a)))))
-			   ((_query mongo "test.books" 0 0 '() '())))))))
+			   ((_query mc "test.books" 0 0 '() '())))))))
 
 
       (test* "_update" (undefined)
-	     (_update mongo "test.books" 
+	     (_update mc "test.books" 
 		     '(("title" . (("ja" . "ウォーターメソッドマン") ("en" . "The Water-Method Man")))) 
 		     '(("title" . (("ja" . "水療法の男") ("en" . "The Water-Method Man")))
 		       ("auther" . "John Winslow Irving") 
@@ -556,30 +556,40 @@
 	     (equal? "水療法の男"
 		     (cdr (assoc "ja" 
 				 (cdr (assoc "title" (car 
-						      ((_query mongo "test.books" 0 1 
+						      ((_query mc "test.books" 0 1 
 							      '(("title" . (("ja" . "水療法の男") ("en" . "The Water-Method Man")))) 
 							      '())))))))))
       (test* "_getmore" #t
-	     (let1 mongo-reply (_query mongo "test.books" 0 6 '() '())
+	     (let1 mongo-reply (_query mc "test.books" 0 6 '() '())
 	       (and
 		(= (length (mongo-reply)) 6)
-		(let1 get-more-reply (_getmore mongo "test.books" 10 (~ mongo-reply 'cursorID))
+		(let1 get-more-reply (_getmore mc "test.books" 10 (~ mongo-reply 'cursorID))
 		  (= (length (get-more-reply)) 7)))))
 
       (test* "_kill-cusors" #t
-	     (let1 mongo-reply (_query mongo "test.books" 0 5 '() '())
+	     (let1 mongo-reply (_query mc "test.books" 0 5 '() '())
 	       (let1 cursorID (~ mongo-reply 'cursorID)
 		 (and
-		  (= (length ((_getmore mongo "test.books" 2 cursorID))) 2)
+		  (= (length ((_getmore mc "test.books" 2 cursorID))) 2)
 		  (begin
-		    (_kill-cusors mongo `(,cursorID))
-		    (= (length ((_getmore mongo "test.books" 2 cursorID))) 0))))))
+		    (_kill-cusors mc `(,cursorID))
+		    (= (length ((_getmore mc "test.books" 2 cursorID))) 0))))))
     
       (test* "_delete" (undefined)
-	     (_delete (make <mongo>) "test.books" '()))
+	     (_delete mc "test.books" '()))
 
       (test* "_delete confirm" #t
-	     (if (null? ((_query mongo "test.books" 0 0 '() '()))) #t))))
+	     (if (null? ((_query mc "test.books" 0 0 '() '()))) #t))))
+
+"mongodb://username:password@host1:27017,host2:27018,host3:27019/database"
+"mongodb://username:password@host1,host2:27018,host3:27019/database"
+"mongodb://username:password@host1:27017"
+"mongodb://username:password@host1"
+"mongodb://username:password@host1/database"
+"mongodb://host1,host2:27018,host3:27019/database"
+"mongodb://host1:27016,host2,host3:27019/database"
+"mongodb://host1/database"
+"mongodb://host1"
 
 ;; epilogue
 (test-end)

@@ -14,6 +14,7 @@
   (use mongo.bson)
   (export
    <mongo>
+   <mongo-connection>
    <mongo-error>
    req->resp
    req-only
@@ -36,7 +37,7 @@
   mongo-error?
   (reason mongo-error-reason))
 
-(define-class <mongo> ()
+(define-class <mongo-connection> ()
   ((host :allocation :instance
          :init-keyword :host
          :init-value "localhost")
@@ -47,19 +48,51 @@
    (out :allocation :instance)
    (sock :allocation :instance)))
 
-(define-method initialize ((mongo <mongo>) initargs)
+(define-method initialize ((mc <mongo-connection>) initargs)
   (next-method)
+  (unless (~ mc 'port) (set! (~ mc 'port) 27017))
   (guard (exc
 	  ((condition-has-type? exc <system-error>)
 	   (error <mongo-error> 
-		  #`"Failed to connect with ,(~ mongo 'host):,(~ mongo 'port)"))
+		  #`"Failed to connect with ,(~ mc 'host):,(~ mc 'port)"))
 	  (else <mongo-error> "Something happened"))
 	 (let1 sock (make-client-socket 'inet
-					(~ mongo 'host)
-					(~ mongo 'port))
-	   (set! (~ mongo 'sock) sock)
-	   (set! (~ mongo 'in) (socket-input-port sock))
-	   (set! (~ mongo 'out) (socket-output-port sock)))))
+					(~ mc 'host)
+					(~ mc 'port))
+	   (set! (~ mc 'sock) sock)
+	   (set! (~ mc 'in) (socket-input-port sock))
+	   (set! (~ mc 'out) (socket-output-port sock)))))
+
+(define-class <mongo> ()
+  ((username :allocation :instance)
+   (password :allocation :instance)
+   (connections :allocation :instance)
+   (dbname :allocation :instance)
+   (uri :allocation :instance
+	:init-keyword :uri
+	:init-value "mongodb://localhost")))
+
+(define-method initialize ((mongo <mongo>) initargs)
+  (next-method)
+  (cond (((string->regexp "^mongodb://(?:(.+):(.+)@)?([^,\/:]+)(?:\:(\\d+))?(?:,([^\/]+))*(?:/?(.+)*)$") 
+	  (~ mongo 'uri))
+	 => (^r (begin
+		  (set! (~ mongo 'username) (r 1))
+		  (set! (~ mongo 'password) (r 2))
+		  (set! (~ mongo 'connections)
+			(append
+			 (list (make <mongo-connection> 
+				 :host (r 3)
+				 :port (r 4)))
+			 (if (r 5)
+			     (map (^a (let1 srv (string-split a ":")
+					(make <mongo-connection> 
+					  :host (car srv)
+					  :port (if (null? (cdr srv)) 27017
+						    (string->number (cadr srv))))))
+				  (string-split (r 5) ","))
+			     '())))
+		  (set! (~ mongo 'dbname) (r 6)))))))
 
 (define-class <mongo-reply> ()
   ((requestID :allocation :instance :init-keyword :requestID)
@@ -87,22 +120,22 @@
 (define-constant OP_DELETE 2006)
 (define-constant OP_KILL_CURSORS 2007)
 
-(define-method req->resp ((mongo <mongo>) buff)
-  (write-block buff (~ mongo 'out))
-  (flush (~ mongo 'out))
-  (let* ((len (read-s32 (~ mongo 'in) 'littie-endian))
+(define-method req->resp ((mc <mongo-connection>) buff)
+  (write-block buff (~ mc 'out))
+  (flush (~ mc 'out))
+  (let* ((len (read-s32 (~ mc 'in) 'littie-endian))
 	 (recv (make-u8vector len)))
     (u8vector-copy! recv (uvector-alias <u8vector> (s32vector len)) 0)
-    (read-block! recv (~ mongo 'in) 4 -1)
+    (read-block! recv (~ mc 'in) 4 -1)
     recv))
 
-(define-method req-only ((mongo <mongo>) buff)
-  (write-block buff (~ mongo 'out))
-  (flush (~ mongo 'out))
+(define-method req-only ((mc <mongo-connection>) buff)
+  (write-block buff (~ mc 'out))
+  (flush (~ mc 'out))
   (undefined))
 
-(define (with-connection mongo proc)
-  (let1 sock (~ mongo 'sock)
+(define (with-connection mc proc)
+  (let1 sock (~ mc 'sock)
   (unwind-protect
    (proc (socket-input-port sock) (socket-output-port sock))
    (socket-close sock))))
@@ -198,7 +231,7 @@
 
 
 ;; Basic Ops
-(define-method _update ((mongo <mongo>) colname selector update . opts)
+(define-method _update ((mc <mongo-connection>) colname selector update . opts)
   (let-keywords opts ((Upsert :Upsert #f)
 		      (MultiUpdate :MultiUpdate #f)
 		      . opt)
@@ -213,9 +246,9 @@
 					     (if MultiUpdate 4 0)))
 			       (list->bson selector)
 			       (list->bson update)))))
-		  (req-only mongo buff))))
+		  (req-only mc buff))))
 
-(define-method _query ((mongo <mongo>) colname num-to-skip num-to-return query return-field-selector . opts)
+(define-method _query ((mc <mongo-connection>) colname num-to-skip num-to-return query return-field-selector . opts)
   (let-keywords opts ((TailableCursor :TailableCursor #f)
 		      (SlaveOk :SlaveOk #f)
 		      (NoCursorTimeout :NoCursorTimeout #f)
@@ -241,12 +274,12 @@
 			       (if (not (null? return-field-selector))
 				   (list (list->bson return-field-selector))
 				   '()))))
-		       (recv (req->resp mongo buff)))
+		       (recv (req->resp mc buff)))
 		  (if (= requestID (get-responseTo recv))
 		      (read-buffer recv)
 		      (error <mongo-error> "requestID and responseTo unmatched.")))))
 
-(define-method _insert ((mongo <mongo>) colname docs . opts)
+(define-method _insert ((mc <mongo-connection>) colname docs . opts)
   (let-keywords opts ((ContinueOnError :ContinueOnError #f)
 		      . opt)
 		#;(for-each (^a (check-element-names a)) docs)
@@ -258,9 +291,9 @@
 				(s32vector (if ContinueOnError 1 0))
 				(string->bson-cstr colname))
 			       (map (^a (list->bson a)) docs)))))
-		  (req-only mongo buff))))
+		  (req-only mc buff))))
 
-(define-method _getmore ((mongo <mongo>) colname num-to-return cursor-id)
+(define-method _getmore ((mc <mongo-connection>) colname num-to-return cursor-id)
   (let* ((requestID (make-requestID))
 	 (buff (write-buffer
 		(list
@@ -269,12 +302,12 @@
 		 (string->bson-cstr colname)
 		 (s32vector num-to-return)
 		 (s64vector cursor-id))))
-	 (recv (req->resp mongo buff)))
+	 (recv (req->resp mc buff)))
     (if (= requestID (get-responseTo recv))
 	(read-buffer recv)
 	(error <mongo-error> "requestID and responseTo unmatched."))))
 
-(define-method _delete ((mongo <mongo>) colname doc . opts)
+(define-method _delete ((mc <mongo-connection>) colname doc . opts)
   (let-keywords opts ((SingleRemove :SingleRemove #f)
 		      . opt)
 		(let* ((requestID (make-requestID))
@@ -285,9 +318,9 @@
 			       (string->bson-cstr colname)
 			       (s32vector (if SingleRemove 1 0))
 			       (list->bson doc)))))
-		  (req-only mongo buff))))
+		  (req-only mc buff))))
 
-(define-method _kill-cusors ((mongo <mongo>) cursorIDs)
+(define-method _kill-cusors ((mc <mongo-connection>) cursorIDs)
   (let* ((requestID (make-requestID))
 	 (buff (write-buffer
 		(append
@@ -296,7 +329,7 @@
 		  (s32vector 0)
 		  (s32vector (length cursorIDs)))
 		 (map (^a (s64vector a)) cursorIDs)))))
-    (req-only mongo buff)))
+    (req-only mc buff)))
 
 ;; GridFS
 (define (file->u8vector-vector filename size)
