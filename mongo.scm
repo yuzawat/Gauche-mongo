@@ -3,7 +3,7 @@
 ;;; mongoDB driver for Gauche
 ;;;  mongoDB <http://www.mongodb.org/>
 
-;;; Last Updated: "2012/04/03 22:05.43"
+;;; Last Updated: "2012/04/04 21:25.59"
 ;;;
 ;;;  Copyright (c) 2012  yuzawat <suzdalenator@gmail.com>
 ;;;
@@ -99,6 +99,14 @@
 			     '())))
 		  (set! (~ mongo 'dbname) (r 6)))))
 	(else (error <mongo-error> "Invalid mongodb uri."))))
+
+(define-class <mongo-collection> ()
+  ((database :allocation :instance)
+   (collection :allocation :instance
+	       :init-keyword :collection)))
+
+(define-method initialize ((mcol <mongo-collection>))
+  (undefined))
 
 (define-class <mongo-reply> ()
   ((requestID :allocation :instance :init-keyword :requestID)
