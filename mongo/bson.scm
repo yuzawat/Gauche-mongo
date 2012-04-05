@@ -3,7 +3,7 @@
 ;; BSON parser & constructer
 ;;  * BSON spec: <http://bsonspec.org/#/specification>
 
-;; Last Updated: "2012/04/03 21:49.09"
+;; Last Updated: "2012/04/05 18:06.50"
 ;;
 ;;  Copyright (c) 2012  yuzawat <suzdalenator@gmail.com>
 ;;
@@ -34,6 +34,7 @@
   (use gauche.parameter)
   (use gauche.sequence)
   (use gauche.uvector)
+  (use rfc.base64)
   (use rfc.md5)
   (use srfi-1)
   (use srfi-11)
@@ -140,7 +141,33 @@
 ;; read bson
 (define (bson->list document)
   (let1 bson (read-bson-document document)
-    (map (^a (cons (~ a 'name) (~ a 'value))) (~ bson 'elist))))
+    (map (^a (bson-element->mongo-extended-json-pair a))(~ bson 'elist))))
+
+(define-method bson-element->mongo-extended-json-pair ((elm <bson-element>))
+  (case (~ elm 'type)
+    ([bson:binary]
+     (cons (~ elm 'name) 
+	   (list (cons "$binary" (base64-encode-string 
+				  (u8vector->string (~ elm 'value)) :line-width #f))
+		 (cons "$type" (number->string (~ elm 'subtype) 16)))))
+    ([bson:date]
+     (cons (~ elm 'name)
+	   (cons "$date" (~ elm 'value))))
+    ([bson:timestamp]
+     (cons (~ elm 'name)
+	   (list (cons "t" (bit-field (~ elm 'value) 32 64))
+		 (cons "i" (bit-field (~ elm 'value) 0 32)))))
+    ([bson:regexp]
+     (cons (~ elm 'name)
+	   (list (cons "$regex" (car (~ elm 'value)))
+		 (cons "$options" (cdr (~ elm 'value))))))
+    ([bson:objectid]
+     (cons (~ elm 'name)
+	   (list (cons "$oid" 
+		       (fold-right string-append ""
+				   (map (^a (format #f "~2,'0x" a))
+					(u8vector->list (~ elm 'value))))))))
+    (else (cons (~ elm 'name) (~ elm 'value)))))
 
 (define (read-bson-document document)
   (let* ((len (uvector-length document))
@@ -192,10 +219,7 @@
       ([7]
        (values
 	(make <bson-element> :type (etype->symbol etype) :name ename 
-              :value (fold-right string-append ""
-                                 (map (^a (format #f "~2,'0x" a))
-                                      (u8vector->list
-                                       (u8vector-copy elements val-index (+ val-index 12))))))
+              :value (u8vector-copy elements val-index (+ val-index 12)))
 	(u8vector-copy elements (+ val-index 12))))
       ([8]
        (values
@@ -216,7 +240,7 @@
        (let-values (((regexp flg end-idx) (get-regexp-str (u8vector-copy elements val-index))))
 	 (values
 	  (make <bson-element> :type (etype->symbol etype) :name ename 
-		:value (string-append regexp flg))
+		:value (cons regexp flg))
 	  (u8vector-copy elements (+ val-index end-idx 1)))))
       ([13]
        (let1 str (u8vector-copy elements val-index)
@@ -273,8 +297,24 @@
       (u8vector-copy! buff 4 elist-bin)
       buff)))
 
+;; http://www.mongodb.org/display/DOCS/Mongo+Extended+JSON
 (define (get-bson-element-list ls)
   (map (^e (match e
+		  (((? string? a) . (("$binary" . b)("$type" . c)))
+		   (make <bson-element> :name a :value (string->u8vector (base64-decode-string b))
+			 :type 'bson:binary :subtype (string->number c 16)))
+		  (((? string? a) . (("$date" . b)))
+		   (make <bson-element> :name a :value b :type 'bson:date))
+		  (((? string? a) . (("$timestamp" . (("t" . b) ("i" . c)))))
+		   (make <bson-element> :name a :value (+ (ash b 32) c)
+			 :type 'bson:timestamp))
+		  (((? string? a) . (("$regex" . b)("$options" . c)))
+		   (make <bson-element> :name a :value (cons b c):type 'bson:regexp))
+		  (((? string? a) . (("$oid" . b)))
+		   (make <bson-element> :name a :value b
+			 :type 'bson:objectid))
+		  (((? string? a) . (("$ref" . b)("$id" . c)))
+		   (make <bson-element> :name a :value b :type 'bson:objectid))
 		  (((? string? a) (? atom? b) (? symbol? c) (? symbol? d)) 
 		   (make <bson-element> :name a :value b :type c :subtype d))
 		  (((? string? a) (? atom? b) (? symbol? c)) 

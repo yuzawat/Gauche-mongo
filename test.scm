@@ -140,8 +140,8 @@
 	    (equal? rest (u8vector 8 97 0 0))))))
 
 (test* "read-element objectid" #t
-       (let ((vec (u8vector 7 101 120 97 109 112 108 101 0 255 255 255 255 255 255 255 255 255 255 255 255 8 97 0 0))
-	     (val '("example" . "ffffffffffffffffffffffff")))
+       (let ((vec (u8vector 7 101 120 97 109 112 108 101 0 79 125 94 163 29 65 200 14 129 9 166 161 8 97 0 0))
+	     (val '("example" . #u8(79 125 94 163 29 65 200 14 129 9 166 161))))
 	 (receive (element rest) (read-element vec)
 	   (and 
 	    (equal? (cons (~ element 'name) (~ element 'value)) val)
@@ -355,12 +355,19 @@
        (let* ((ls0  '(("example0" . 0) ("example1" . 1)))
 	      (ls1  '(("example0" 0 bson:float) ("example1" 1 bson:float)))
 	      (ls2  `(,(make <bson-element> :name "example0" :value 0 :type 'bson:float) ,(make <bson-element> :name "example1" :value 1 :type 'bson:float)))
-	      (ls3  `(("example0" . 0) ("example1" 1 bson:float) ,(make <bson-element> :name "example2" :value 2 :type 'bson:float))))
+	      (ls3  `(("example0" . 0) ("example1" 1 bson:float) ,(make <bson-element> :name "example2" :value 2 :type 'bson:float)))
+	      (ls4  '(("binary" . (("$binary" . "XXXXXXXXX")("$type" . "0")))
+		      ("date" . (("$date" . 0)))
+		      ("timestamp" . (("$timestamp" . (("t" . 1333616856) ("i" . 0)))))
+		      ("regex" . (("$regex" . ".*")("$options" . "i")))
+		      ("_id" . (("$oid" . "XXXXXXXXXXXX")))
+		      ("ref" . (("$ref" . "database")("$id" . "XXXXXXXXXXXXX"))))))
 	 (and
 	  (not (find (^a (not (is-a? a <bson-element>))) (get-bson-element-list ls0)))
 	  (not (find (^a (not (is-a? a <bson-element>))) (get-bson-element-list ls1)))
 	  (not (find (^a (not (is-a? a <bson-element>))) (get-bson-element-list ls2)))
-	  (not (find (^a (not (is-a? a <bson-element>))) (get-bson-element-list ls3))))))
+	  (not (find (^a (not (is-a? a <bson-element>))) (get-bson-element-list ls3)))
+	  (not (find (^a (not (is-a? a <bson-element>))) (get-bson-element-list ls4))))))
 
 #;(map (^a (describe a))
      (get-bson-element-list 
